@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function hasOnlyKeys(keys) {
+      return request.resource.data.keys().hasOnly(keys);
+    }
+
+    function userDocValid() {
+      return hasOnlyKeys(['profile', 'settings', 'createdAt', 'updatedAt'])
+        && request.resource.data.profile is map
+        && request.resource.data.settings is map
+        && request.resource.data.settings.currency is string
+        && request.resource.data.settings.monthStartDay is number
+        && request.resource.data.settings.monthStartDay >= 1
+        && request.resource.data.settings.monthStartDay <= 31
+        && request.resource.data.settings.theme in ['light', 'dark']
+        && request.resource.data.settings.categories is list
+        && request.resource.data.settings.subcategoriesEnabled is bool;
+    }
+
+    match /users/{userId} {
+      allow create, update: if owns(userId) && userDocValid();
+      allow read: if owns(userId);
+      allow delete: if false;
+
+      match /accounts/{accountId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && hasOnlyKeys(['name', 'type', 'balance', 'currency', 'institution', 'billingCycleDay', 'dueDay', 'creditLimit', 'archived', 'createdAt', 'updatedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() >= 1
+          && request.resource.data.type in ['cash', 'bank', 'credit', 'wallet', 'investment', 'income', 'expense', 'equity', 'liability']
+          && request.resource.data.balance is number
+          && request.resource.data.currency is string;
+        allow delete: if owns(userId);
+      }
+
+      match /transactions/{transactionId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && hasOnlyKeys(['type', 'amount', 'category', 'subcategory', 'debitAccountId', 'creditAccountId', 'accountId', 'date', 'notes', 'source', 'bookmarkId', 'recurringId', 'createdAt', 'updatedAt'])
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.type in ['income', 'expense', 'transfer']
+          && request.resource.data.debitAccountId is string
+          && request.resource.data.creditAccountId is string
+          && request.resource.data.debitAccountId != request.resource.data.creditAccountId
+          && request.resource.data.category is string
+          && request.resource.data.category.size() >= 1;
+        allow delete: if owns(userId);
+      }
+
+      match /budgets/{budgetId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && hasOnlyKeys(['category', 'month', 'monthlyLimit', 'createdAt', 'updatedAt'])
+          && request.resource.data.category is string
+          && request.resource.data.month is string
+          && request.resource.data.monthlyLimit is number
+          && request.resource.data.monthlyLimit >= 0;
+        allow delete: if owns(userId);
+      }
+
+      match /bookmarks/{bookmarkId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && hasOnlyKeys(['name', 'type', 'amount', 'category', 'debitAccountId', 'creditAccountId', 'notes', 'createdAt', 'updatedAt'])
+          && request.resource.data.name is string
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.debitAccountId != request.resource.data.creditAccountId;
+        allow delete: if owns(userId);
+      }
+
+      match /recurring/{recurringId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && hasOnlyKeys(['name', 'type', 'amount', 'category', 'debitAccountId', 'creditAccountId', 'notes', 'frequency', 'nextRun', 'active', 'createdAt', 'updatedAt'])
+          && request.resource.data.frequency in ['weekly', 'monthly', 'yearly']
+          && request.resource.data.active is bool
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.debitAccountId != request.resource.data.creditAccountId;
+        allow delete: if owns(userId);
+      }
+
+      match /debts/{debtId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && hasOnlyKeys(['lender', 'principal', 'monthlyPayment', 'paidAmount', 'interestRate', 'dueDay', 'notes', 'createdAt', 'updatedAt'])
+          && request.resource.data.lender is string
+          && request.resource.data.principal is number
+          && request.resource.data.principal >= 0
+          && request.resource.data.monthlyPayment is number
+          && request.resource.data.monthlyPayment >= 0
+          && request.resource.data.paidAmount is number
+          && request.resource.data.paidAmount >= 0
+          && request.resource.data.paidAmount <= request.resource.data.principal;
+        allow delete: if owns(userId);
+      }
+
+      match /sips/{sipId} {
+        allow read: if owns(userId);
+        allow create, update: if owns(userId)
+          && hasOnlyKeys(['investmentType', 'customInvestmentType', 'fundName', 'folioNumber', 'amount', 'frequency', 'startDate', 'paidInstallments', 'targetInstallments', 'billName', 'billUrl', 'notes', 'createdAt', 'updatedAt'])
+          && request.resource.data.fundName is string
+          && request.resource.data.amount is number
+          && request.resource.data.amount >= 0
+          && request.resource.data.frequency in ['weekly', 'monthly', 'yearly']
+          && request.resource.data.paidInstallments is number
+          && request.resource.data.paidInstallments >= 0;
+        allow delete: if owns(userId);
+      }
+    }
+  }
+}
